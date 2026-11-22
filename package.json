@@ -1,0 +1,12 @@
+{
+  "name": "trackmytrain-cloud-sync",
+  "version": "1.0.0",
+  "description": "24/7 Cloud Live Telemetry Engine for TrackMyTrain.com.pk",
+  "main": "sync.js",
+  "scripts": {
+    "start": "node sync.js"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
