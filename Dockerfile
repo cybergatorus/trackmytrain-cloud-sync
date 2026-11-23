@@ -5,6 +5,7 @@ WORKDIR /app
 # Copy package descriptors and install dependencies
 COPY package*.json ./
 RUN npm ci
+RUN npx playwright install chromium
 
 # Copy application source code
 COPY . .

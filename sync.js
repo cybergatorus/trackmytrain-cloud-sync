@@ -84,8 +84,8 @@ async function mainLoop() {
       try {
         browser = await chromium.launch(launchOptions);
       } catch (launchErr) {
-        if (launchErr.message && launchErr.message.includes("Executable doesn't exist")) {
-          console.log('[Browser] Bundled chromium not found, trying system channel "chrome"...');
+        if (launchErr.message && launchErr.message.includes("Executable doesn't exist") && process.platform === 'win32') {
+          console.log('[Browser] Bundled chromium not found on Windows, trying system channel "chrome"...');
           launchOptions.channel = 'chrome';
           browser = await chromium.launch(launchOptions);
         } else {
