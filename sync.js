@@ -70,7 +70,7 @@ async function mainLoop() {
     let browser = null;
     try {
       console.log('[Browser] Launching Headless Chromium with genuine fingerprint...');
-      browser = await chromium.launch({
+      const launchOptions = {
         headless: true,
         args: [
           '--no-sandbox',
@@ -79,7 +79,19 @@ async function mainLoop() {
           '--disable-blink-features=AutomationControlled',
           '--window-size=1280,800'
         ]
-      });
+      };
+
+      try {
+        browser = await chromium.launch(launchOptions);
+      } catch (launchErr) {
+        if (launchErr.message && launchErr.message.includes("Executable doesn't exist")) {
+          console.log('[Browser] Bundled chromium not found, trying system channel "chrome"...');
+          launchOptions.channel = 'chrome';
+          browser = await chromium.launch(launchOptions);
+        } else {
+          throw launchErr;
+        }
+      }
 
       const context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
