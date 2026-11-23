@@ -3,13 +3,20 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const http = require('http');
 const { chromium } = require('playwright');
 
-const SYNC_TOKEN = process.env.SYNC_TOKEN || 'tmt_live_sync_71e412b8_2026';
-const TARGET_HOST = process.env.TARGET_HOST || 'https://trackmytrain.com.pk';
-const PUSH_ENDPOINT = `${TARGET_HOST}/api/push_stream.php?token=${SYNC_TOKEN}`;
+const SYNC_TOKEN = process.env.SYNC_TOKEN;
+const TARGET_HOST = process.env.TARGET_HOST;
 const DURATION_SECONDS = parseInt(process.env.SYNC_DURATION_SECONDS || '0', 10); // 0 = continuous 24/7
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '12000', 10);
 const PORT = parseInt(process.env.PORT || '7860', 10);
 const RUN_ONCE = process.argv.includes('--once');
+
+if (!SYNC_TOKEN || !TARGET_HOST) {
+  console.warn('[Config Warning] TARGET_HOST and SYNC_TOKEN should be set via environment variables.');
+}
+
+const PUSH_ENDPOINT = TARGET_HOST && SYNC_TOKEN 
+  ? `${TARGET_HOST}/api/push_stream.php?token=${SYNC_TOKEN}` 
+  : null;
 
 const previousPositions = new Map();
 
@@ -30,10 +37,10 @@ let syncStats = {
   totalLive: 0,
   moving: 0,
   atStation: 0,
-  targetHost: TARGET_HOST
+  targetConfigured: Boolean(TARGET_HOST && SYNC_TOKEN)
 };
 
-// Start lightweight Health Check Server for 24/7 Cloud Hosting (Render, Koyeb, HuggingFace, Fly.io)
+// Start lightweight Health Check Server for 24/7 Cloud Hosting
 const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -41,7 +48,7 @@ const server = http.createServer((req, res) => {
   if (req.url === '/' || req.url === '/health' || req.url === '/status') {
     res.writeHead(200);
     res.end(JSON.stringify({
-      app: 'TrackMyTrain 24/7 Real-Time Cloud Telemetry Engine',
+      app: 'Transit Telemetry Cloud Streamer',
       version: '2.0.0',
       uptimeSeconds: Math.round(process.uptime()),
       ...syncStats
@@ -58,8 +65,7 @@ server.listen(PORT, '0.0.0.0', () => {
 
 async function mainLoop() {
   console.log('='.repeat(70));
-  console.log(' [Cloud 24/7 Engine] TrackMyTrain 1:1 Live Telemetry Streamer');
-  console.log(` Target Endpoint: ${PUSH_ENDPOINT}`);
+  console.log(' [Cloud 24/7 Engine] Transit Telemetry Live Streamer');
   console.log(` Mode: ${DURATION_SECONDS === 0 ? 'CONTINUOUS 24/7 (Non-stop)' : DURATION_SECONDS + 's bounded'}`);
   console.log(` Poll Interval: ${POLL_INTERVAL_MS / 1000}s | HTTP Port: ${PORT}`);
   console.log('='.repeat(70));
@@ -99,9 +105,9 @@ async function mainLoop() {
       });
 
       const page = await context.newPage();
-      console.log('[Browser] Navigating to paktrainlive.com ...');
+      console.log('[Browser] Connecting to upstream transit provider...');
       await page.goto('https://paktrainlive.com/', { waitUntil: 'domcontentloaded', timeout: 50000 });
-      console.log('[Browser] Waiting 5s for Cloudflare clearance ...');
+      console.log('[Browser] Waiting 5s for clearance...');
       await page.waitForTimeout(5000);
 
       while (true) {
@@ -154,7 +160,7 @@ async function mainLoop() {
 
               clearTimeout(timeout);
               try { await reader.cancel(); } catch {}
-              return { error: 'No rides:snapshot event found' };
+              return { error: 'No snapshot event found' };
             } catch (err) {
               return { error: err.message };
             }
@@ -218,14 +224,18 @@ async function mainLoop() {
                 data: normalized
               };
 
-              const pushRes = await fetch(PUSH_ENDPOINT, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Sync-Token': SYNC_TOKEN
-                },
-                body: JSON.stringify(payload)
-              });
+              let pushStatus = 'Skipped (No destination configured)';
+              if (PUSH_ENDPOINT) {
+                const pushRes = await fetch(PUSH_ENDPOINT, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Sync-Token': SYNC_TOKEN
+                  },
+                  body: JSON.stringify(payload)
+                });
+                pushStatus = `PUSHED ${pushRes.status}`;
+              }
 
               syncStats.totalSyncs++;
               syncStats.lastSyncTime = nowIso;
@@ -234,12 +244,10 @@ async function mainLoop() {
               syncStats.atStation = atStationCount;
               syncStats.status = 'transmitting_live';
 
-              const km = normalized.find(t => t.trainNumber === '1' || (t.trainName && t.trainName.includes('Khyber Mail 1UP')));
-              const kmInfo = km ? `Khyber Mail 1UP: ${km.speed} km/h, ${km.delayMinutes}m delay, next: ${km.nextStation}` : 'OK';
-              console.log(`[Cloud #${syncStats.totalSyncs}] ${nowIso} | ${normalized.length} trains (${movingCount} moving, ${atStationCount} at station) | ${kmInfo} => PUSHED ${pushRes.status}`);
+              console.log(`[Cloud #${syncStats.totalSyncs}] ${nowIso} | ${normalized.length} units (${movingCount} active, ${atStationCount} idle) => ${pushStatus}`);
             }
           } else {
-            console.warn(`[Cloud Notice] Stream extraction notice:`, streamResult?.error || 'empty');
+            console.warn(`[Cloud Notice] Snapshot extraction notice:`, streamResult?.error || 'empty');
           }
         } catch (cycleErr) {
           console.error('[Cloud Cycle Error]:', cycleErr.message);

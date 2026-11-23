@@ -1,7 +1,7 @@
 {
-  "name": "trackmytrain-cloud-sync",
+  "name": "transit-telemetry-streamer",
   "version": "1.0.0",
-  "description": "24/7 Cloud Live Telemetry Engine for TrackMyTrain.com.pk",
+  "description": "High-frequency transit telemetry ingestion and normalization engine",
   "main": "sync.js",
   "scripts": {
     "start": "node sync.js"

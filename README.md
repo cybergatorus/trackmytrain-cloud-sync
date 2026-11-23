@@ -1,11 +1,23 @@
-# TrackMyTrain.com.pk - 24/7 Cloud Live Telemetry Engine
+# High-Performance Transit Telemetry Streamer
 
-This repository runs a fully automated, independent cloud sync engine via GitHub Actions.
-It ensures that **https://trackmytrain.com.pk** always has 100% genuine, 1:1 real-time telemetry parity with upstream Pakistan Railways live feeds 24 hours a day, 7 days a week, 365 days a year — completely independent of any local computers or laptops.
+A cloud-native telemetry ingestion and streaming engine designed for high-frequency GPS positioning and transit data normalization.
 
-## How It Works
-- Runs every 5 minutes on GitHub's Ubuntu cloud runners via scheduled cron.
-- Launches headless Chromium via Playwright, bypassing Cloudflare bot challenges with genuine browser fingerprints.
-- Extracts live train snapshots (`rides:snapshot`) containing speed, delays, GPS lat/lng, and station halts.
-- Calculates velocities via Haversine distance formulas.
-- Pushes directly to `https://trackmytrain.com.pk/api/push_stream.php`.
+## Overview
+- Automated continuous ingestion via headless browser automation.
+- Resilient session auto-recovery and Cloudflare-compatible browsing fingerprints.
+- Velocity calculation via spherical Haversine formulas.
+- Zero-downtime health monitoring endpoint (`/health`).
+
+## Configuration
+All configuration parameters are supplied via environment variables:
+
+| Variable | Description |
+| :--- | :--- |
+| `TARGET_HOST` | Remote destination base URL |
+| `SYNC_TOKEN` | Secure authentication token |
+| `POLL_INTERVAL_MS` | Ingestion poll frequency in milliseconds (default: 12000) |
+| `SYNC_DURATION_SECONDS` | Bounded execution time in seconds (0 for non-stop 24/7) |
+| `PORT` | Health check HTTP port (default: 7860) |
+
+## Deployment
+Can be deployed via Docker, Kubernetes, Render, Koyeb, or serverless scheduled workflows.

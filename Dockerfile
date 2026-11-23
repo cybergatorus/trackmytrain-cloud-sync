@@ -10,13 +10,11 @@ RUN npx playwright install chromium
 # Copy application source code
 COPY . .
 
-# Set cloud environment defaults
+# Set cloud environment defaults (sensitive values are injected via Environment Variables)
 ENV PORT=7860
 ENV NODE_ENV=production
 ENV SYNC_DURATION_SECONDS=0
 ENV POLL_INTERVAL_MS=12000
-ENV TARGET_HOST=https://trackmytrain.com.pk
-ENV SYNC_TOKEN=tmt_live_sync_71e412b8_2026
 
 EXPOSE 7860
 
