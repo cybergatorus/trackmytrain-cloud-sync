@@ -1,4 +1,4 @@
-name: TrackMyTrain 24/7 Cloud Live Telemetry
+name: Transit Telemetry Cloud Worker
 
 on:
   schedule:
