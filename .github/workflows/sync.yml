@@ -35,7 +35,7 @@ jobs:
       - name: Run 24/7 Live Stream Sync
         run: node sync.js
         env:
-          SYNC_TOKEN: 'tmt_live_sync_71e412b8_2026'
-          TARGET_HOST: 'https://trackmytrain.com.pk'
+            SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
           SYNC_DURATION_SECONDS: '280'
           POLL_INTERVAL_MS: '14000'
