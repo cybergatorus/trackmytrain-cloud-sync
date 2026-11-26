@@ -110,6 +110,9 @@ async function mainLoop() {
       console.log('[Browser] Waiting 5s for clearance...');
       await page.waitForTimeout(5000);
 
+      const sessionStartTime = Date.now();
+      let consecutiveFailures = 0;
+
       while (true) {
         if (DURATION_SECONDS > 0) {
           const elapsed = (Date.now() - processStartTime) / 1000;
@@ -120,11 +123,17 @@ async function mainLoop() {
           }
         }
 
+        // Proactive session rotation every 45 minutes to keep browser fresh and prevent memory/socket staleness
+        if (Date.now() - sessionStartTime > 45 * 60 * 1000) {
+          console.log('[Cloud Watchdog] 45 minutes elapsed. Proactively rotating browser session to maintain peak freshness...');
+          throw new Error('Proactive session rotation');
+        }
+
         try {
           const streamResult = await page.evaluate(async () => {
             try {
               const controller = new AbortController();
-              const timeout = setTimeout(() => controller.abort(), 9500);
+              const timeout = setTimeout(() => controller.abort(), 14000);
 
               const res = await fetch('/api/stream', {
                 signal: controller.signal,
@@ -144,7 +153,7 @@ async function mainLoop() {
               let buffer = '';
               const t0 = Date.now();
 
-              while (Date.now() - t0 < 8000) {
+              while (Date.now() - t0 < 12000) {
                 const { value, done } = await reader.read();
                 if (done) break;
                 buffer += decoder.decode(value, { stream: true });
@@ -166,7 +175,8 @@ async function mainLoop() {
             }
           });
 
-          if (streamResult && streamResult.success && Array.isArray(streamResult.data)) {
+          if (streamResult && streamResult.success && Array.isArray(streamResult.data) && streamResult.data.length > 0) {
+            consecutiveFailures = 0;
             const rawList = streamResult.data;
             const nowIso = new Date().toISOString();
             const nowMs = Date.now();
@@ -247,7 +257,16 @@ async function mainLoop() {
               console.log(`[Cloud #${syncStats.totalSyncs}] ${nowIso} | ${normalized.length} units (${movingCount} active, ${atStationCount} idle) => ${pushStatus}`);
             }
           } else {
-            console.warn(`[Cloud Notice] Snapshot extraction notice:`, streamResult?.error || 'empty');
+            consecutiveFailures++;
+            console.warn(`[Cloud Notice] Snapshot extraction notice (${consecutiveFailures} consecutive):`, streamResult?.error || 'empty');
+            if (consecutiveFailures >= 3) {
+              console.warn('[Cloud Watchdog] 3 consecutive empty cycles. Reloading page...');
+              try { await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }); await page.waitForTimeout(5000); } catch {}
+            }
+            if (consecutiveFailures >= 5) {
+              console.warn('[Cloud Watchdog] 5 consecutive failures. Forcing clean browser relaunch...');
+              throw new Error('Watchdog triggered: SSE stream stalled');
+            }
           }
         } catch (cycleErr) {
           console.error('[Cloud Cycle Error]:', cycleErr.message);
