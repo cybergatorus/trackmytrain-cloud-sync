@@ -18,6 +18,89 @@ const PUSH_ENDPOINT = TARGET_HOST && SYNC_TOKEN
   ? `${TARGET_HOST}/api/push_stream.php?token=${SYNC_TOKEN}` 
   : null;
 
+const PUSH_7DAY_ENDPOINT = TARGET_HOST && SYNC_TOKEN 
+  ? `${TARGET_HOST}/api/push_7day.php?token=${SYNC_TOKEN}` 
+  : null;
+
+let last7DaySyncTime = 0;
+let cached7DayDelays = null;
+
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const initialDelaysPath = path.join(__dirname, 'train7DayDelays.json');
+  if (fs.existsSync(initialDelaysPath)) {
+    cached7DayDelays = JSON.parse(fs.readFileSync(initialDelaysPath, 'utf8'));
+    console.log(`[Config] Loaded initial ${Object.keys(cached7DayDelays).length} 7-day delays from train7DayDelays.json`);
+  }
+} catch (e) {
+  console.warn('[Config] Could not load initial train7DayDelays.json:', e.message);
+}
+
+async function sync7DayDelays() {
+  try {
+    console.log('[Cloud 7-Day Sync] Fetching authentic 7-day average delays from upstream...');
+    const dirRes = await fetch('https://paktrainlive.com/trains', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    if (!dirRes.ok) return;
+    const html = await dirRes.text();
+    const slugs = [...new Set(Array.from(html.matchAll(/\/trains\/([a-z0-9\-]+)/g)).map(m => m[1]))];
+
+    const validDelays = {};
+    const chunkSize = 8;
+    for (let i = 0; i < slugs.length; i += chunkSize) {
+      const chunk = slugs.slice(i, i + chunkSize);
+      await Promise.all(chunk.map(async slug => {
+        try {
+          const res = await fetch('https://paktrainlive.com/trains/' + slug, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+          });
+          if (res.status === 200) {
+            const pageHtml = await res.text();
+            const match = pageHtml.match(/<p[^>]*>([0-9.]+[mh]?\s*(?:late|early)?|On time)<\/p>\s*<p[^>]*>7-day avg delay<\/p>/i);
+            if (match) {
+              const val = match[1].trim();
+              validDelays[slug] = val;
+              const base = slug.replace(/-(?:1up|2dn|\d+up|\d+dn|\d+)$/i, '');
+              validDelays[base] = val;
+              validDelays[`${base}-1up`] = val;
+              validDelays[`${base}-2dn`] = val;
+            }
+          }
+        } catch {}
+      }));
+    }
+
+    if (Object.keys(validDelays).length > 0) {
+      cached7DayDelays = { ...(cached7DayDelays || {}), ...validDelays };
+      last7DaySyncTime = Date.now();
+      console.log(`[Cloud 7-Day Sync] Updated ${Object.keys(validDelays).length} authentic 7-day delays in cache.`);
+
+      if (PUSH_7DAY_ENDPOINT) {
+        try {
+          const pushRes = await fetch(PUSH_7DAY_ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Sync-Token': SYNC_TOKEN
+            },
+            body: JSON.stringify({
+              updatedAt: new Date().toISOString(),
+              delays: cached7DayDelays
+            })
+          });
+          console.log(`[Cloud 7-Day Sync] Pushed to ${PUSH_7DAY_ENDPOINT} => Status ${pushRes.status}`);
+        } catch (pushErr) {
+          console.warn('[Cloud 7-Day Sync Notice]: Direct endpoint push skipped:', pushErr.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Cloud 7-Day Sync Error]:', err.message);
+  }
+}
+
 const previousPositions = new Map();
 
 function haversine(lat1, lon1, lat2, lon2) {
@@ -231,6 +314,7 @@ async function mainLoop() {
                 activeTrains: activeCount,
                 movingTrains: movingCount,
                 atStationTrains: atStationCount,
+                sevenDayDelays: cached7DayDelays,
                 data: normalized
               };
 
@@ -275,6 +359,11 @@ async function mainLoop() {
         if (RUN_ONCE) {
           if (browser) await browser.close().catch(() => {});
           process.exit(0);
+        }
+
+        // Periodic 7-Day Average Delay Synchronization (runs on startup & every 30 mins)
+        if (Date.now() - last7DaySyncTime > 30 * 60 * 1000) {
+          sync7DayDelays().catch(e => console.error('[7-Day Background Error]:', e.message));
         }
 
         await page.waitForTimeout(POLL_INTERVAL_MS);
