@@ -62,10 +62,25 @@ async function sync7DayDelays() {
             if (match) {
               const val = match[1].trim();
               validDelays[slug] = val;
+              const isUp = /-(?:1up|\d+up)$/i.test(slug);
+              const isDn = /-(?:2dn|\d+dn)$/i.test(slug);
+              const numMatch = slug.match(/-(?:1up|2dn|\d+up|\d+dn)$/i);
+              if (numMatch) {
+                const numKey = numMatch[0].replace('-', '').toLowerCase();
+                validDelays[numKey] = val;
+              }
               const base = slug.replace(/-(?:1up|2dn|\d+up|\d+dn|\d+)$/i, '');
-              validDelays[base] = val;
-              validDelays[`${base}-1up`] = val;
-              validDelays[`${base}-2dn`] = val;
+              if (!validDelays[base]) {
+                validDelays[base] = val;
+              }
+              if (isUp) {
+                validDelays[`${base}-1up`] = val;
+              } else if (isDn) {
+                validDelays[`${base}-2dn`] = val;
+              } else {
+                if (!validDelays[`${base}-1up`]) validDelays[`${base}-1up`] = val;
+                if (!validDelays[`${base}-2dn`]) validDelays[`${base}-2dn`] = val;
+              }
             }
           }
         } catch {}
